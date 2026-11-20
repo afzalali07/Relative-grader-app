@@ -1,42 +1,30 @@
 import React, { useState, useMemo } from 'react';
-import { Download, Search, Filter, FileSpreadsheet, Check, CheckCircle2, Award } from 'lucide-react';
+import { Download, Search, FileSpreadsheet, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import GradeBadge from './GradeBadge';
 
 export default function MasterGrid({ subjectCodes, masterGrid, onExport, isExporting }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [gradeFilter, setGradeFilter] = useState('ALL');
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
   const [viewMode, setViewMode] = useState('grades'); // 'grades', 'withPoints', 'withMarks'
 
-  // Filter students based on search and selected grade filter
+  // Filter students based on search and sort strictly by register number
   const filteredGrid = useMemo(() => {
-    return masterGrid.filter((row) => {
-      const matchesSearch =
-        row.registerNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        row.studentName.toLowerCase().includes(searchTerm.toLowerCase());
-
-      if (!matchesSearch) return false;
-
-      if (gradeFilter === 'ALL') return true;
-
-      // Check if student has the selected grade in any subject
-      return Object.values(row.grades).includes(gradeFilter);
-    });
-  }, [masterGrid, searchTerm, gradeFilter]);
-
-  // Overall grade statistics across all subjects
-  const overallStats = useMemo(() => {
-    const counts = { 'O': 0, 'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C': 0 };
-    let totalGrades = 0;
-    masterGrid.forEach((row) => {
-      Object.values(row.grades).forEach((g) => {
-        if (counts[g] !== undefined) {
-          counts[g] += 1;
-          totalGrades += 1;
-        }
+    return masterGrid
+      .filter((row) => {
+        const query = searchTerm.toLowerCase();
+        return (
+          row.registerNumber.toLowerCase().includes(query) ||
+          row.studentName.toLowerCase().includes(query)
+        );
+      })
+      .sort((a, b) => {
+        const comp = a.registerNumber.localeCompare(b.registerNumber, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+        return sortDirection === 'asc' ? comp : -comp;
       });
-    });
-    return { counts, totalGrades };
-  }, [masterGrid]);
+  }, [masterGrid, searchTerm, sortDirection]);
 
   return (
     <div className="space-y-6">
@@ -52,7 +40,7 @@ export default function MasterGrid({ subjectCodes, masterGrid, onExport, isExpor
             </h3>
           </div>
           <p className="text-xs text-slate-500">
-            Final Letter Grades across all {subjectCodes.length} subjects for {masterGrid.length} students. Ready for export.
+            Final Letter Grades across all {subjectCodes.length} subjects for {masterGrid.length} students &bull; Sorted by Student Register Number
           </p>
         </div>
 
@@ -71,49 +59,27 @@ export default function MasterGrid({ subjectCodes, masterGrid, onExport, isExpor
         </button>
       </div>
 
-      {/* Grade Distribution Overview Pills */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-        {['O', 'A+', 'A', 'B+', 'B', 'C'].map((g) => {
-          const count = overallStats.counts[g] || 0;
-          const pct = overallStats.totalGrades > 0
-            ? ((count / overallStats.totalGrades) * 100).toFixed(1)
-            : '0.0';
-          return (
-            <button
-              key={g}
-              onClick={() => setGradeFilter(gradeFilter === g ? 'ALL' : g)}
-              className={`p-3 rounded-xl border transition-all text-left flex flex-col justify-between ${
-                gradeFilter === g
-                  ? 'border-indigo-500 bg-indigo-50/70 shadow-sm ring-2 ring-indigo-500/20'
-                  : 'border-slate-200 bg-white hover:border-slate-300'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <GradeBadge grade={g} size="sm" />
-                <span className="text-[10px] font-mono font-bold text-slate-400">{pct}%</span>
-              </div>
-              <div className="mt-2 text-base font-extrabold text-slate-800">
-                {count} <span className="text-[11px] font-normal text-slate-400">grades</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
       {/* Table Card */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         {/* Controls Bar */}
         <div className="p-4 border-b border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-          {/* Search */}
-          <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search register no or name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-            />
+          {/* Search & Sort Indicator */}
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search register no or name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="hidden lg:flex items-center gap-1.5 text-xs text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-2.5 py-1 rounded-lg font-medium whitespace-nowrap">
+              <span>Sorted by Reg No:</span>
+              <span className="font-bold uppercase font-mono">{sortDirection}</span>
+            </div>
           </div>
 
           {/* View mode toggle */}
@@ -151,15 +117,6 @@ export default function MasterGrid({ subjectCodes, masterGrid, onExport, isExpor
                 With Raw Marks
               </button>
             </div>
-
-            {gradeFilter !== 'ALL' && (
-              <button
-                onClick={() => setGradeFilter('ALL')}
-                className="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 rounded bg-rose-50 border border-rose-200"
-              >
-                Clear Filter ({gradeFilter})
-              </button>
-            )}
           </div>
         </div>
 
@@ -169,8 +126,19 @@ export default function MasterGrid({ subjectCodes, masterGrid, onExport, isExpor
             <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-700 sticky top-0 z-10 shadow-sm backdrop-blur-sm">
               <tr>
                 <th className="py-3 px-4 font-bold w-12 text-center">#</th>
-                <th className="py-3 px-4 font-bold whitespace-nowrap">
-                  Student Register Number
+                <th
+                  onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                  className="py-3 px-4 font-bold whitespace-nowrap cursor-pointer select-none hover:bg-slate-200/70 transition-colors"
+                  title="Click to toggle Reg No sort order"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Student Register Number</span>
+                    {sortDirection === 'asc' ? (
+                      <ArrowUp className="w-3.5 h-3.5 text-indigo-600" />
+                    ) : (
+                      <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                    )}
+                  </div>
                 </th>
                 <th className="py-3 px-4 font-bold whitespace-nowrap min-w-[180px]">
                   Student Name
@@ -254,7 +222,7 @@ export default function MasterGrid({ subjectCodes, masterGrid, onExport, isExpor
         <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
           <span>
             Showing <strong className="text-slate-700">{filteredGrid.length}</strong> of{' '}
-            <strong className="text-slate-700">{masterGrid.length}</strong> students
+            <strong className="text-slate-700">{masterGrid.length}</strong> students &bull; Sorted by Reg No
           </span>
           <span className="flex items-center gap-2">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />

@@ -9,14 +9,17 @@ import {
   Layers,
   Award,
   CheckCircle2,
-  Sliders
+  Sliders,
+  Filter,
+  X
 } from 'lucide-react';
 import HistogramChart from './HistogramChart';
 import GradeBadge from './GradeBadge';
 
 export default function SubjectDetails({ subjectData }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('markDesc'); // 'markDesc', 'markAsc', 'regAsc', 'nameAsc'
+  const [selectedGradeFilter, setSelectedGradeFilter] = useState('ALL');
+  const [sortBy, setSortBy] = useState('regAsc'); // 'regAsc', 'regDesc', 'markDesc', 'markAsc', 'nameAsc'
 
   const {
     subjectCode,
@@ -33,25 +36,29 @@ export default function SubjectDetails({ subjectData }) {
     histogramAfter
   } = subjectData;
 
-  // Filter and sort students
+  // Filter and sort students for this subject
   const filteredStudents = useMemo(() => {
     return studentResults
       .filter((s) => {
         const query = searchTerm.toLowerCase();
-        return (
+        const matchesSearch =
           s.registerNumber.toLowerCase().includes(query) ||
-          s.studentName.toLowerCase().includes(query) ||
-          s.grade.toLowerCase().includes(query)
-        );
+          s.studentName.toLowerCase().includes(query);
+
+        if (!matchesSearch) return false;
+
+        if (selectedGradeFilter === 'ALL') return true;
+        return s.grade === selectedGradeFilter;
       })
       .sort((a, b) => {
+        if (sortBy === 'regAsc') return a.registerNumber.localeCompare(b.registerNumber, undefined, { numeric: true, sensitivity: 'base' });
+        if (sortBy === 'regDesc') return b.registerNumber.localeCompare(a.registerNumber, undefined, { numeric: true, sensitivity: 'base' });
         if (sortBy === 'markDesc') return b.originalMark - a.originalMark;
         if (sortBy === 'markAsc') return a.originalMark - b.originalMark;
-        if (sortBy === 'regAsc') return a.registerNumber.localeCompare(b.registerNumber);
         if (sortBy === 'nameAsc') return a.studentName.localeCompare(b.studentName);
         return 0;
       });
-  }, [studentResults, searchTerm, sortBy]);
+  }, [studentResults, searchTerm, selectedGradeFilter, sortBy]);
 
   // Lambda explanation helper
   const getLambdaInterpretation = (lam) => {
@@ -128,6 +135,64 @@ export default function SubjectDetails({ subjectData }) {
           <p className="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3" /> All cleared (≥ 45 marks)
           </p>
+        </div>
+      </div>
+
+      {/* Subject-Wise Grade Counts & Distribution */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <Award className="w-5 h-5 text-indigo-600" />
+              Subject Grade Distribution & Counts ({subjectCode})
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Grade count breakdown specifically for {subjectCode}. Click any grade to filter student records below.
+            </p>
+          </div>
+          {selectedGradeFilter !== 'ALL' && (
+            <button
+              onClick={() => setSelectedGradeFilter('ALL')}
+              className="self-start sm:self-auto text-xs font-semibold px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 flex items-center gap-1 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Clear Filter ({selectedGradeFilter})
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          {['O', 'A+', 'A', 'B+', 'B', 'C'].map((g) => {
+            const count = gradeDistribution[g] || 0;
+            const pct = totalStudents > 0 ? ((count / totalStudents) * 100).toFixed(1) : '0.0';
+            const isSelected = selectedGradeFilter === g;
+
+            return (
+              <button
+                key={g}
+                onClick={() => setSelectedGradeFilter(isSelected ? 'ALL' : g)}
+                className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                  isSelected
+                    ? 'border-indigo-600 bg-indigo-50/70 shadow-sm ring-2 ring-indigo-500/20'
+                    : 'border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300 hover:shadow-sm'
+                }`}
+                title={`Filter by Grade ${g} in ${subjectCode}`}
+              >
+                <div className="flex items-center justify-between">
+                  <GradeBadge grade={g} size="sm" />
+                  <span className="text-[11px] font-mono font-bold text-slate-500">{pct}%</span>
+                </div>
+                <div className="mt-3">
+                  <div className="text-2xl font-extrabold text-slate-900">
+                    {count}
+                  </div>
+                  <div className="text-[11px] text-slate-400 font-medium">
+                    {count === 1 ? 'student' : 'students'}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -253,8 +318,13 @@ export default function SubjectDetails({ subjectData }) {
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-base font-bold text-slate-800">
+            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
               Student Scores & Transformed Values
+              {selectedGradeFilter !== 'ALL' && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                  Grade {selectedGradeFilter} only
+                </span>
+              )}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               Individual transformation scores, assigned relative grades, and points for {subjectCode}
@@ -266,7 +336,7 @@ export default function SubjectDetails({ subjectData }) {
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search student or grade..."
+                placeholder="Search student or roll no..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 w-56"
@@ -278,9 +348,10 @@ export default function SubjectDetails({ subjectData }) {
               onChange={(e) => setSortBy(e.target.value)}
               className="text-xs bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700"
             >
+              <option value="regAsc">Reg No (Ascending)</option>
+              <option value="regDesc">Reg No (Descending)</option>
               <option value="markDesc">Marks (Highest first)</option>
               <option value="markAsc">Marks (Lowest first)</option>
-              <option value="regAsc">Register Number</option>
               <option value="nameAsc">Student Name</option>
             </select>
           </div>
@@ -325,7 +396,7 @@ export default function SubjectDetails({ subjectData }) {
               ) : (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-400 text-xs">
-                    No students match your search filter.
+                    No students match your search or grade filter.
                   </td>
                 </tr>
               )}

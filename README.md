@@ -28,6 +28,7 @@ Designed for colleges and universities to compute standardized letter grades (`O
    - Inverses boundaries back to original mark ranges using $x = (1 + \lambda \cdot y)^{1/\lambda}$ (or $\exp(y)$ if $\lambda = 0$).
 
 3. **Rich Subject Analysis UI**:
+   - **Subject-Wise Grade Distribution & Counts**: Dedicated breakdown showing the exact number of students and percentages receiving each letter grade (`O`, `A+`, `A`, `B+`, `B`, `C`) for that individual subject, with interactive grade filtering.
    - **Optimal $\lambda$ Value** and mathematical interpretation.
    - **Mean ($\mu$)** and **Standard Deviation ($\sigma$)** cards.
    - **Transformed Grade Boundaries** and **Final Grade Ranges** (in raw marks).
@@ -37,9 +38,9 @@ Designed for colleges and universities to compute standardized letter grades (`O
    - Searchable, sortable student list with raw marks, transformed scores, and assigned grades.
 
 4. **Master Grade Grid & Excel Export**:
-   - Master Grid displaying: `Student Register Number`, `Student Name`, and the letter grade for every subject.
-   - Toggle to view with Grade Points or Raw Marks.
-   - Filter by letter grades or search by student details.
+   - Master Grid displaying: `Student Register Number`, `Student Name`, and the letter grade for every subject (without global aggregations).
+   - Search by student register number or name.
+   - Toggle display modes: Letter Grades (default), With Points, or With Raw Marks.
    - **One-click Excel Export**: Exports strictly the Master Grid (`Student Register Number`, `Student Name`, and subject Letter Grades) as `.xlsx`.
 
 ---

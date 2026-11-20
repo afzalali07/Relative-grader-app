@@ -1,4 +1,5 @@
 import math
+import re
 from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 import pandas as pd
@@ -17,6 +18,14 @@ GRADES = ["O", "A+", "A", "B+", "B", "C"]
 POINTS = {"O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6, "C": 5}
 PASS_MARK = 45.0
 MAX_MARK = 100.0
+
+
+def natural_sort_key(s: str) -> List[Any]:
+    """
+    Sort key for alphanumeric strings so that e.g. REG1, REG2, REG10 are in correct order.
+    """
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s))]
+
 
 
 def inverse_boxcox(y: float, lam: float) -> float:
@@ -169,6 +178,9 @@ def process_subject_grading(
             "grade": assigned_grade,
             "points": assigned_point
         })
+
+    # Sort student results by register number
+    student_results.sort(key=lambda item: natural_sort_key(item["registerNumber"]))
 
     # Step 6: Generate histograms
     hist_before = compute_histogram_bins(marks, num_bins=8)
@@ -360,6 +372,9 @@ def run_relative_grading_pipeline(subject_cols: List[str], student_rows: List[Di
                 row_dict["originalMarks"][subj] = mark
 
         grid_rows.append(row_dict)
+
+    # Sort master grid rows by register number
+    grid_rows.sort(key=lambda r: natural_sort_key(r["registerNumber"]))
 
     return {
         "subjects": subjects_output,
