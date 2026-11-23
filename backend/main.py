@@ -1,9 +1,10 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Response
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+import json
 import sys
 import os
 
@@ -15,16 +16,17 @@ from relative_grader import (
     run_relative_grading_pipeline,
     export_grid_to_excel,
     generate_sample_excel,
+    validate_k_values,
+    DEFAULT_K_VALUES,
     PASS_MARK,
     MAX_MARK,
     GRADES,
-    POINTS,
-    K_VALUES
+    POINTS
 )
 
 app = FastAPI(
     title="Relative Grading System API",
-    description="Relative Grading System API using Box-Cox Transformation",
+    description="Relative Grading System API using Box-Cox Transformation with Customizable Boundaries",
     version="1.0.0"
 )
 
@@ -38,7 +40,11 @@ app.add_middleware(
 )
 
 
-def process_uploaded_data(file_bytes: bytes, filename: str) -> Dict[str, Any]:
+def process_uploaded_data(
+    file_bytes: bytes,
+    filename: str,
+    k_values: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     subject_cols, student_rows, errors = parse_and_validate_excel(file_bytes)
 
     if errors:
@@ -50,7 +56,7 @@ def process_uploaded_data(file_bytes: bytes, filename: str) -> Dict[str, Any]:
         }
 
     try:
-        result = run_relative_grading_pipeline(subject_cols, student_rows)
+        result = run_relative_grading_pipeline(subject_cols, student_rows, k_values=k_values)
         return {
             "success": True,
             "filename": filename,
@@ -74,7 +80,7 @@ def health_check():
         "gradingScale": {
             "grades": GRADES,
             "points": POINTS,
-            "kValues": K_VALUES,
+            "kValues": DEFAULT_K_VALUES,
             "passMark": PASS_MARK,
             "maxMark": MAX_MARK
         }
@@ -92,15 +98,55 @@ def download_sample_excel():
 
 
 @app.post("/api/grade/upload")
-async def upload_and_grade(file: UploadFile = File(...)):
+async def upload_and_grade(
+    file: UploadFile = File(...),
+    kValues: Optional[str] = Form(None)
+):
     if not (file.filename.endswith(".xlsx") or file.filename.endswith(".xls")):
         raise HTTPException(
             status_code=400,
             detail="Invalid file format. Please upload an Excel (.xlsx or .xls) file."
         )
 
+    parsed_k = None
+    if kValues:
+        try:
+            parsed_k = json.loads(kValues)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON format for kValues.")
+
     file_bytes = await file.read()
-    return process_uploaded_data(file_bytes, file.filename)
+    return process_uploaded_data(file_bytes, file.filename, k_values=parsed_k)
+
+
+class RecalculateRequest(BaseModel):
+    subjectCodes: List[str]
+    studentRows: List[Dict[str, Any]]
+    kValues: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/grade/recalculate")
+def recalculate_grading(payload: RecalculateRequest):
+    if not payload.subjectCodes or not payload.studentRows:
+        raise HTTPException(status_code=400, detail="subjectCodes and studentRows are required for recalculation.")
+    
+    try:
+        result = run_relative_grading_pipeline(
+            payload.subjectCodes,
+            payload.studentRows,
+            k_values=payload.kValues
+        )
+        return {
+            "success": True,
+            "errors": [],
+            "data": result
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "errors": [str(e)],
+            "data": None
+        }
 
 
 class ExportRequest(BaseModel):

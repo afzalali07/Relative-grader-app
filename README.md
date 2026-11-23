@@ -18,13 +18,14 @@ Designed for colleges and universities to compute standardized letter grades (`O
    - Computes optimal power parameter $\lambda$ using maximum likelihood estimation (`scipy.stats.boxcox`).
    - Transforms raw scores into normalized scores: $y^{(\lambda)} = \frac{x^\lambda - 1}{\lambda}$ (or $\ln(x)$ if $\lambda = 0$).
    - Calculates population mean ($\mu$) and standard deviation ($\sigma$, `ddof=0`).
-   - Computes transformed cutoffs via standard deviation multipliers ($K$):
+   - Computes transformed cutoffs via customizable standard deviation multipliers ($K$):
      - **O (10 Points)**: $\mu + 1.5 \cdot \sigma$
-     - **A+ (9 Points)**: $\mu + 1.0 \cdot \sigma$
-     - **A (8 Points)**: $\mu + 0.5 \cdot \sigma$
-     - **B+ (7 Points)**: $\mu + 0.0 \cdot \sigma$
-     - **B (6 Points)**: $\mu - 0.5 \cdot \sigma$
+     - **A+ (9 Points)**: $\mu + 0.75 \cdot \sigma$
+     - **A (8 Points)**: $\mu + 0.0 \cdot \sigma$
+     - **B+ (7 Points)**: $\mu - 0.75 \cdot \sigma$
+     - **B (6 Points)**: $\mu - 2.0 \cdot \sigma$
      - **C (5 Points)**: Remaining cleared students scoring down to 45
+   - **Customizable Boundaries in Grading Logic Tab**: Users can manually modify and fix these boundaries ($K_O > K_{A+} > K_A > K_{B+} > K_B$) directly inside the web UI with live real-time recalculation of grades.
    - Inverses boundaries back to original mark ranges using $x = (1 + \lambda \cdot y)^{1/\lambda}$ (or $\exp(y)$ if $\lambda = 0$).
 
 3. **Rich Subject Analysis UI**:

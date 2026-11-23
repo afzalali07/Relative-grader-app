@@ -6,18 +6,49 @@ import pandas as pd
 from scipy.stats import boxcox
 import io
 
-K_VALUES = {
+DEFAULT_K_VALUES = {
     "O": 1.5,
-    "A+": 1.0,
-    "A": 0.5,
-    "B+": 0.0,
-    "B": -0.5,
+    "A+": 0.75,
+    "A": 0.0,
+    "B+": -0.75,
+    "B": -2.0,
 }
+K_VALUES = DEFAULT_K_VALUES.copy()
 
 GRADES = ["O", "A+", "A", "B+", "B", "C"]
 POINTS = {"O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6, "C": 5}
 PASS_MARK = 45.0
 MAX_MARK = 100.0
+
+
+def validate_k_values(k_values: Optional[Dict[str, Any]]) -> Dict[str, float]:
+    """
+    Validates that k_values contains O, A+, A, B+, B as numbers in strictly descending order.
+    Returns normalized dictionary or a copy of DEFAULT_K_VALUES.
+    """
+    if not k_values:
+        return DEFAULT_K_VALUES.copy()
+
+    required = ["O", "A+", "A", "B+", "B"]
+    parsed_k: Dict[str, float] = {}
+    for grade in required:
+        if grade not in k_values or k_values[grade] is None:
+            raise ValueError(f"Missing grade boundary multiplier for '{grade}'.")
+        try:
+            parsed_k[grade] = float(k_values[grade])
+        except (ValueError, TypeError):
+            raise ValueError(f"Multiplier for grade '{grade}' must be a valid number.")
+
+    # Check strictly descending
+    vals = [parsed_k[g] for g in required]
+    for i in range(len(vals) - 1):
+        if vals[i] <= vals[i + 1]:
+            raise ValueError(
+                f"Grade boundaries must be in strictly descending order: "
+                f"Grade '{required[i]}' ({vals[i]}) must be greater than '{required[i+1]}' ({vals[i+1]})."
+            )
+
+    return parsed_k
 
 
 def natural_sort_key(s: str) -> List[Any]:
@@ -69,11 +100,14 @@ def compute_histogram_bins(data: np.ndarray, num_bins: int = 8) -> List[Dict[str
 def process_subject_grading(
     subject_code: str,
     student_records: List[Dict[str, Any]],
+    k_values: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Performs Box-Cox relative grading for a single subject.
     student_records is a list of dicts: {'register_number', 'name', 'mark'}
     """
+    active_k = validate_k_values(k_values)
+
     valid_students = [
         s for s in student_records
         if s.get("mark") is not None and not (isinstance(s["mark"], float) and np.isnan(s["mark"]))
@@ -105,7 +139,7 @@ def process_subject_grading(
     boundaries = []
     transformed_boundaries_info = []
     for grade in GRADES[:-1]:  # Excludes "C"
-        k = K_VALUES[grade]
+        k = active_k[grade]
         b = mean_val + k * sd_val
         boundaries.append(b)
         transformed_boundaries_info.append({
@@ -201,6 +235,7 @@ def process_subject_grading(
         "histogramAfter": hist_after,
         "originalMarks": [round(float(m), 2) for m in marks],
         "transformedScores": [round(float(t), 6) for t in transformed],
+        "kValues": active_k,
     }
 
 
@@ -315,10 +350,15 @@ def parse_and_validate_excel(file_bytes: bytes) -> Tuple[List[str], List[Dict[st
     return subject_cols, student_rows, errors
 
 
-def run_relative_grading_pipeline(subject_cols: List[str], student_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def run_relative_grading_pipeline(
+    subject_cols: List[str],
+    student_rows: List[Dict[str, Any]],
+    k_values: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     Executes the Box-Cox grading pipeline across all subjects and constructs the final master grid.
     """
+    active_k = validate_k_values(k_values)
     subjects_output: Dict[str, Any] = {}
     
     # Process each subject
@@ -335,7 +375,7 @@ def run_relative_grading_pipeline(subject_cols: List[str], student_rows: List[Di
 
         # Process subject grading
         try:
-            subj_result = process_subject_grading(subj, subj_students)
+            subj_result = process_subject_grading(subj, subj_students, active_k)
             subjects_output[subj] = subj_result
         except Exception as e:
             raise ValueError(f"Error grading subject '{subj}': {str(e)}")
@@ -380,7 +420,9 @@ def run_relative_grading_pipeline(subject_cols: List[str], student_rows: List[Di
         "subjects": subjects_output,
         "subjectCodes": subject_cols,
         "masterGrid": grid_rows,
-        "totalStudents": len(student_rows)
+        "totalStudents": len(student_rows),
+        "studentRows": student_rows,
+        "kValues": active_k,
     }
 
 

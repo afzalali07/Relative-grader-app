@@ -266,8 +266,8 @@ export default function SubjectDetails({ subjectData }) {
                       <td className="py-2 font-sans font-bold">
                         <GradeBadge grade={b.grade} size="sm" />
                       </td>
-                      <td className="py-2 text-slate-600">
-                        {b.k >= 0 ? `+${b.k.toFixed(1)}` : b.k.toFixed(1)} σ
+                      <td className="py-2 text-slate-600 font-mono font-medium">
+                        {b.k >= 0 ? `+${b.k}` : `${b.k}`} σ
                       </td>
                       <td className="py-2 text-right font-semibold text-slate-800">
                         {b.boundary.toFixed(6)}

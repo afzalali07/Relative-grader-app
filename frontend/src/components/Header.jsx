@@ -1,10 +1,15 @@
 import React from 'react';
-import { BarChart3, Download, HelpCircle, UploadCloud, RefreshCw } from 'lucide-react';
+import { BarChart3, Download, Sliders, RefreshCw } from 'lucide-react';
 
-export default function Header({ onOpenFormula, onReset, hasData }) {
+export default function Header({ onOpenFormula, onReset, hasData, activeKValues }) {
   const handleDownloadSample = () => {
     window.location.href = '/api/sample-excel';
   };
+
+  // Summarize K values for header badge
+  const kSummary = activeKValues
+    ? `O:${activeKValues['O']} · A+:${activeKValues['A+']} · A:${activeKValues['A']} · B+:${activeKValues['B+']} · B:${activeKValues['B']}`
+    : 'O:1.5 · A+:0.75 · A:0 · B+:-0.75 · B:-2';
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200">
@@ -31,21 +36,26 @@ export default function Header({ onOpenFormula, onReset, hasData }) {
 
         {/* Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Grading Logic & Boundaries Button */}
           <button
             onClick={onOpenFormula}
-            className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/60 rounded-lg border border-slate-200 flex items-center gap-1.5 transition-colors"
+            className="px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 rounded-lg border border-indigo-200 flex items-center gap-1.5 transition-colors shadow-xs"
+            title="Configure Grade Boundaries & View Logic"
           >
-            <HelpCircle className="w-4 h-4 text-slate-500" />
-            <span className="hidden sm:inline">Grading Logic</span>
+            <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Grading Logic</span>
+            <span className="hidden xl:inline-block font-mono text-[10px] text-indigo-500 bg-white px-1.5 py-0.5 rounded border border-indigo-100">
+              {kSummary}
+            </span>
           </button>
 
           <button
             onClick={handleDownloadSample}
-            className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-indigo-600 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-1.5 transition-colors shadow-sm"
+            className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-indigo-600 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-1.5 transition-colors shadow-xs"
             title="Download ready-to-test Excel file with 25 students and 3 subjects"
           >
             <Download className="w-4 h-4 text-indigo-600" />
-            <span>Sample Excel</span>
+            <span className="hidden sm:inline">Sample Excel</span>
           </button>
 
           {hasData && (

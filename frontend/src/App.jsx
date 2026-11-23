@@ -5,6 +5,8 @@ import SubjectDetails from './components/SubjectDetails';
 import MasterGrid from './components/MasterGrid';
 import FormulaModal from './components/FormulaModal';
 import ValidationErrorsModal from './components/ValidationErrorsModal';
+import BoundaryBar from './components/BoundaryBar';
+import { recalculateResultsWithK } from './utils/gradeCalculator';
 import {
   FileSpreadsheet,
   BookOpen,
@@ -12,8 +14,17 @@ import {
   AlertCircle,
   Layers,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Sliders
 } from 'lucide-react';
+
+const DEFAULT_K_VALUES = {
+  'O': 1.5,
+  'A+': 0.75,
+  'A': 0.0,
+  'B+': -0.75,
+  'B': -2.0,
+};
 
 export default function App() {
   const [data, setData] = useState(null);
@@ -24,6 +35,58 @@ export default function App() {
   const [isFormulaOpen, setIsFormulaOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Active K multiplier boundaries
+  const [kValues, setKValues] = useState(() => {
+    try {
+      const saved = localStorage.getItem('relative_grader_k_values');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed['O'] !== undefined) return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_K_VALUES;
+  });
+
+  // Save new K values and immediately recalculate results in zero milliseconds!
+  const handleSaveKValues = (newKValues) => {
+    setKValues(newKValues);
+    try {
+      localStorage.setItem('relative_grader_k_values', JSON.stringify(newKValues));
+    } catch (e) {}
+
+    // Immediately recalculate on the client for instantaneous 0ms reflection!
+    if (data && data.subjects) {
+      const updatedData = recalculateResultsWithK(data, newKValues);
+      setData(updatedData);
+    }
+
+    // Sync with backend asynchronously in background
+    if (data && data.subjectCodes && data.studentRows) {
+      fetch('/api/grade/recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subjectCodes: data.subjectCodes,
+          studentRows: data.studentRows,
+          kValues: newKValues,
+        }),
+      })
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && resData.data) {
+          // Keep backend reference up to date
+          setData(prev => ({
+            ...prev,
+            ...resData.data
+          }));
+        }
+      })
+      .catch(err => {
+        console.error('Background recalculation sync error:', err);
+      });
+    }
+  };
+
   // Upload and process Excel file
   const handleFileUpload = async (file) => {
     setIsLoading(true);
@@ -31,6 +94,7 @@ export default function App() {
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('kValues', JSON.stringify(kValues));
 
     try {
       const response = await fetch('/api/grade/upload', {
@@ -124,18 +188,37 @@ export default function App() {
         onOpenFormula={() => setIsFormulaOpen(true)}
         onReset={handleReset}
         hasData={!!data}
+        activeKValues={kValues}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!data ? (
-          <FileUpload
-            onFileUpload={handleFileUpload}
-            isLoading={isLoading}
-            onSampleLoad={handleSampleLoad}
-          />
+          <div className="space-y-6">
+            {/* Live Boundary Adjuster before file upload */}
+            <div className="max-w-4xl mx-auto">
+              <BoundaryBar
+                activeKValues={kValues}
+                onUpdateKValues={handleSaveKValues}
+                onOpenLogicModal={() => setIsFormulaOpen(true)}
+              />
+            </div>
+
+            <FileUpload
+              onFileUpload={handleFileUpload}
+              isLoading={isLoading}
+              onSampleLoad={handleSampleLoad}
+            />
+          </div>
         ) : (
           <div className="space-y-6">
+            {/* Live Interactive Boundary Adjuster Bar above results */}
+            <BoundaryBar
+              activeKValues={kValues}
+              onUpdateKValues={handleSaveKValues}
+              onOpenLogicModal={() => setIsFormulaOpen(true)}
+            />
+
             {/* Subject and Master Grid Navigation Tabs */}
             <div className="bg-white rounded-2xl border border-slate-200 p-2 shadow-sm flex flex-wrap items-center gap-1.5 overflow-x-auto">
               <button
@@ -199,10 +282,12 @@ export default function App() {
         )}
       </main>
 
-      {/* Formula & Explanation Modal */}
+      {/* Formula & Boundaries Configuration Modal */}
       <FormulaModal
         isOpen={isFormulaOpen}
         onClose={() => setIsFormulaOpen(false)}
+        activeKValues={kValues}
+        onSaveKValues={handleSaveKValues}
       />
 
       {/* Excel Validation Errors Modal */}
