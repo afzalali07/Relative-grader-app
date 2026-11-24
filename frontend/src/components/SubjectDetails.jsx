@@ -24,6 +24,8 @@ export default function SubjectDetails({ subjectData }) {
   const {
     subjectCode,
     totalStudents,
+    totalIncludingU,
+    uCount,
     optimalLambda,
     mean,
     standardDeviation,
@@ -35,6 +37,9 @@ export default function SubjectDetails({ subjectData }) {
     histogramBefore,
     histogramAfter
   } = subjectData;
+
+  // Total students displayed (gradable + U)
+  const displayTotal = totalIncludingU || totalStudents;
 
   // Filter and sort students for this subject
   const filteredStudents = useMemo(() => {
@@ -53,8 +58,16 @@ export default function SubjectDetails({ subjectData }) {
       .sort((a, b) => {
         if (sortBy === 'regAsc') return a.registerNumber.localeCompare(b.registerNumber, undefined, { numeric: true, sensitivity: 'base' });
         if (sortBy === 'regDesc') return b.registerNumber.localeCompare(a.registerNumber, undefined, { numeric: true, sensitivity: 'base' });
-        if (sortBy === 'markDesc') return b.originalMark - a.originalMark;
-        if (sortBy === 'markAsc') return a.originalMark - b.originalMark;
+        if (sortBy === 'markDesc') {
+          const ma = a.originalMark ?? -Infinity;
+          const mb = b.originalMark ?? -Infinity;
+          return mb - ma;
+        }
+        if (sortBy === 'markAsc') {
+          const ma = a.originalMark ?? Infinity;
+          const mb = b.originalMark ?? Infinity;
+          return ma - mb;
+        }
         if (sortBy === 'nameAsc') return a.studentName.localeCompare(b.studentName);
         return 0;
       });
@@ -130,10 +143,15 @@ export default function SubjectDetails({ subjectData }) {
             </div>
           </div>
           <div className="text-2xl font-extrabold text-slate-800">
-            {totalStudents}
+            {displayTotal}
           </div>
-          <p className="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3" /> All cleared (≥ 45 marks)
+          <p className="text-[11px] mt-1 flex items-center gap-1">
+            <span className="text-emerald-600 font-medium flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" /> {totalStudents} graded
+            </span>
+            {uCount > 0 && (
+              <span className="text-red-500 font-medium ml-1">· {uCount} U (fail/absent)</span>
+            )}
           </p>
         </div>
       </div>
@@ -161,10 +179,10 @@ export default function SubjectDetails({ subjectData }) {
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-          {['O', 'A+', 'A', 'B+', 'B', 'C'].map((g) => {
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3">
+          {['O', 'A+', 'A', 'B+', 'B', 'C', 'U'].map((g) => {
             const count = gradeDistribution[g] || 0;
-            const pct = totalStudents > 0 ? ((count / totalStudents) * 100).toFixed(1) : '0.0';
+            const pct = displayTotal > 0 ? ((count / displayTotal) * 100).toFixed(1) : '0.0';
             const isSelected = selectedGradeFilter === g;
 
             return (
@@ -372,27 +390,49 @@ export default function SubjectDetails({ subjectData }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredStudents.length > 0 ? (
-                filteredStudents.map((s, idx) => (
-                  <tr key={s.registerNumber} className="hover:bg-indigo-50/30 transition-colors">
-                    <td className="py-2.5 px-4 text-slate-400 font-mono">{idx + 1}</td>
-                    <td className="py-2.5 px-4 font-mono font-semibold text-slate-800">
-                      {s.registerNumber}
-                    </td>
-                    <td className="py-2.5 px-4 font-medium text-slate-700">{s.studentName}</td>
-                    <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
-                      {s.originalMark.toFixed(2)}
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono text-slate-600">
-                      {s.transformedScore.toFixed(6)}
-                    </td>
-                    <td className="py-2.5 px-4 text-center">
-                      <GradeBadge grade={s.grade} size="sm" />
-                    </td>
-                    <td className="py-2.5 px-4 text-center font-mono font-bold text-slate-700">
-                      {s.points}
-                    </td>
-                  </tr>
-                ))
+                filteredStudents.map((s, idx) => {
+                  const isU = s.grade === 'U';
+                  const markDisplay = s.originalMark != null
+                    ? s.originalMark.toFixed(2)
+                    : (s.isAbsent ? 'AB' : '—');
+                  const transformedDisplay = s.transformedScore != null
+                    ? s.transformedScore.toFixed(6)
+                    : <span className="text-slate-300 italic text-[10px]">excluded</span>;
+                  return (
+                    <tr
+                      key={s.registerNumber}
+                      className={`transition-colors ${
+                        isU ? 'bg-red-50/40 hover:bg-red-50/60' : 'hover:bg-indigo-50/30'
+                      }`}
+                    >
+                      <td className="py-2.5 px-4 text-slate-400 font-mono">{idx + 1}</td>
+                      <td className="py-2.5 px-4 font-mono font-semibold text-slate-800">
+                        {s.registerNumber}
+                      </td>
+                      <td className="py-2.5 px-4 font-medium text-slate-700">{s.studentName}</td>
+                      <td className={`py-2.5 px-4 text-right font-mono font-bold ${
+                        isU ? 'text-red-700' : 'text-slate-900'
+                      }`}>
+                        {markDisplay}
+                        {s.isAbsent && (
+                          <span className="ml-1 text-[10px] text-red-400 font-normal">(Absent)</span>
+                        )}
+                        {!s.isAbsent && isU && s.originalMark != null && (
+                          <span className="ml-1 text-[10px] text-red-400 font-normal">(Fail)</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-600">
+                        {transformedDisplay}
+                      </td>
+                      <td className="py-2.5 px-4 text-center">
+                        <GradeBadge grade={s.grade} size="sm" />
+                      </td>
+                      <td className="py-2.5 px-4 text-center font-mono font-bold text-slate-700">
+                        {isU ? <span className="text-red-500">0</span> : s.points}
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-400 text-xs">

@@ -16,7 +16,8 @@ DEFAULT_K_VALUES = {
 K_VALUES = DEFAULT_K_VALUES.copy()
 
 GRADES = ["O", "A+", "A", "B+", "B", "C"]
-POINTS = {"O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6, "C": 5}
+# U = fail/absent, not included in relative grading
+POINTS = {"O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6, "C": 5, "U": 0}
 PASS_MARK = 45.0
 MAX_MARK = 100.0
 
@@ -97,6 +98,14 @@ def compute_histogram_bins(data: np.ndarray, num_bins: int = 8) -> List[Dict[str
     return bins
 
 
+def _is_absent_value(val) -> bool:
+    """Returns True if the cell value represents an absent student (AB)."""
+    if val is None:
+        return False
+    s = str(val).strip().upper()
+    return s in ("AB", "ABSENT", "A/B")
+
+
 def process_subject_grading(
     subject_code: str,
     student_records: List[Dict[str, Any]],
@@ -104,27 +113,67 @@ def process_subject_grading(
 ) -> Dict[str, Any]:
     """
     Performs Box-Cox relative grading for a single subject.
-    student_records is a list of dicts: {'register_number', 'name', 'mark'}
+    student_records is a list of dicts: {'register_number', 'name', 'mark', 'isAbsent' (optional), 'isFail' (optional)}
+
+    Students with mark < 45 OR isAbsent=True are excluded from Box-Cox and assigned grade U (fail).
     """
     active_k = validate_k_values(k_values)
 
-    valid_students = [
-        s for s in student_records
-        if s.get("mark") is not None and not (isinstance(s["mark"], float) and np.isnan(s["mark"]))
-    ]
+    # Separate students:
+    # - U-grade students: absent (isAbsent=True) or mark < PASS_MARK
+    # - Gradable students: mark >= PASS_MARK and not absent
+    u_students = []
+    gradable_students = []
 
-    n = len(valid_students)
+    for s in student_records:
+        mark = s.get("mark")
+        is_absent = s.get("isAbsent", False)
+        is_null = mark is None or (isinstance(mark, float) and np.isnan(mark))
+
+        if is_absent or is_null:
+            u_students.append({**s, "grade": "U", "reason": "absent"})
+        elif float(mark) < PASS_MARK:
+            u_students.append({**s, "grade": "U", "reason": "fail"})
+        else:
+            gradable_students.append(s)
+
+    n = len(gradable_students)
     if n < 2:
+        # If fewer than 2 gradable students, all get U
+        all_results = []
+        for s in u_students:
+            orig_m = float(s["mark"]) if s.get("mark") is not None and not (isinstance(s.get("mark"), float) and np.isnan(s.get("mark"))) else None
+            all_results.append({
+                "registerNumber": str(s.get("register_number", "")),
+                "studentName": str(s.get("name", "")),
+                "originalMark": round(orig_m, 2) if orig_m is not None else None,
+                "transformedScore": None,
+                "grade": "U",
+                "points": 0,
+                "isAbsent": s.get("reason") == "absent",
+            })
+        for s in gradable_students:
+            orig_m = float(s["mark"])
+            all_results.append({
+                "registerNumber": str(s.get("register_number", "")),
+                "studentName": str(s.get("name", "")),
+                "originalMark": round(orig_m, 2),
+                "transformedScore": None,
+                "grade": "U",
+                "points": 0,
+                "isAbsent": False,
+            })
+        all_results.sort(key=lambda item: natural_sort_key(item["registerNumber"]))
         raise ValueError(
-            f"Subject '{subject_code}' has only {n} valid student mark(s). At least 2 students are required for Box-Cox transformation."
+            f"Subject '{subject_code}' has only {n} gradable student mark(s) (≥{PASS_MARK}). At least 2 students are required for Box-Cox transformation."
         )
 
-    marks = np.array([float(s["mark"]) for s in valid_students], dtype=float)
+    marks = np.array([float(s["mark"]) for s in gradable_students], dtype=float)
 
     # Check variation
     if np.all(marks == marks[0]):
         raise ValueError(
-            f"Subject '{subject_code}' all students have identical marks ({marks[0]}). Variance must be non-zero for Box-Cox transformation."
+            f"Subject '{subject_code}' all gradable students have identical marks ({marks[0]}). Variance must be non-zero for Box-Cox transformation."
         )
 
     # Step 1: Find optimal lambda and perform Box-Cox
@@ -186,7 +235,7 @@ def process_subject_grading(
             "maxMark": round(max_mark, 2)
         })
 
-    # Step 5: Assign grades to each student
+    # Step 5: Assign grades to each gradable student
     def get_grade(mark_val: float) -> str:
         for idx, b in enumerate(final_boundaries):
             if mark_val >= b:
@@ -196,8 +245,10 @@ def process_subject_grading(
     # Map student transformed scores and grades
     student_results = []
     grade_distribution = {g: 0 for g in GRADES}
+    grade_distribution["U"] = 0  # Add U to distribution
 
-    for idx, s in enumerate(valid_students):
+    # First: process gradable students
+    for idx, s in enumerate(gradable_students):
         orig_m = float(marks[idx])
         trans_m = float(transformed[idx])
         assigned_grade = get_grade(orig_m)
@@ -210,19 +261,42 @@ def process_subject_grading(
             "originalMark": round(orig_m, 2),
             "transformedScore": round(trans_m, 6),
             "grade": assigned_grade,
-            "points": assigned_point
+            "points": assigned_point,
+            "isAbsent": False,
+        })
+
+    # Second: add U-grade students
+    for s in u_students:
+        raw_mark = s.get("mark")
+        is_ab = s.get("reason") == "absent"
+        if raw_mark is not None and not (isinstance(raw_mark, float) and np.isnan(raw_mark)):
+            orig_m = float(raw_mark)
+        else:
+            orig_m = None
+        grade_distribution["U"] += 1
+
+        student_results.append({
+            "registerNumber": str(s.get("register_number", "")),
+            "studentName": str(s.get("name", "")),
+            "originalMark": round(orig_m, 2) if orig_m is not None else None,
+            "transformedScore": None,
+            "grade": "U",
+            "points": 0,
+            "isAbsent": is_ab,
         })
 
     # Sort student results by register number
     student_results.sort(key=lambda item: natural_sort_key(item["registerNumber"]))
 
-    # Step 6: Generate histograms
+    # Step 6: Generate histograms (only for gradable students)
     hist_before = compute_histogram_bins(marks, num_bins=8)
     hist_after = compute_histogram_bins(transformed, num_bins=8)
 
     return {
         "subjectCode": subject_code,
-        "totalStudents": n,
+        "totalStudents": n,          # Only gradable students used in Box-Cox
+        "totalIncludingU": len(student_results),
+        "uCount": grade_distribution["U"],
         "optimalLambda": round(lam, 6),
         "mean": round(mean_val, 6),
         "standardDeviation": round(sd_val, 6),
@@ -245,7 +319,8 @@ def parse_and_validate_excel(file_bytes: bytes) -> Tuple[List[str], List[Dict[st
     - Finds Student Register Number column
     - Finds Student Name column
     - Detects subject columns (all other columns)
-    - Validates marks are numeric and between 45 and 100
+    - Validates marks: numeric between 45 and 100 are accepted as passing.
+      Marks < 45 or "AB" (absent) are flagged as U-grade (fail/absent) but NOT treated as errors.
     Returns: (subject_codes, parsed_student_rows, error_messages)
     """
     errors: List[str] = []
@@ -304,7 +379,7 @@ def parse_and_validate_excel(file_bytes: bytes) -> Tuple[List[str], List[Dict[st
         return [], [], ["No subject columns found in Excel. Expected at least one subject course code column."]
 
     student_rows = []
-    
+
     for row_idx, row in df.iterrows():
         excel_row_num = row_idx + 2  # 1-indexed, accounting for header
         reg_num = str(row[reg_col]).strip() if pd.notna(row[reg_col]) else ""
@@ -319,20 +394,33 @@ def parse_and_validate_excel(file_bytes: bytes) -> Tuple[List[str], List[Dict[st
         if not s_name:
             errors.append(f"Row {excel_row_num}: Student Name is empty for Register No '{reg_num}'.")
 
-        row_marks: Dict[str, Optional[float]] = {}
+        row_marks: Dict[str, Any] = {}
         for subj in subject_cols:
             val = row[subj]
+
+            # Check for absent marker (AB / ABSENT / A/B)
+            if not pd.isna(val) and _is_absent_value(val):
+                # Mark as absent (U grade)
+                row_marks[subj] = {"mark": None, "isAbsent": True}
+                continue
+
             if pd.isna(val) or val == "" or str(val).strip().lower() in ["na", "n/a", "none", "-"]:
-                # Mark is missing / empty
+                # Mark is missing / empty - treat as not attempted (skipped for this subject)
                 row_marks[subj] = None
             else:
                 try:
                     num_val = float(val)
-                    if num_val < PASS_MARK or num_val > MAX_MARK:
+                    if num_val > MAX_MARK:
                         errors.append(
-                            f"Row {excel_row_num} [{s_name} - {reg_num}], Subject '{subj}': Mark {num_val} is invalid. Only passed marks between {PASS_MARK:.0f} and {MAX_MARK:.0f} are accepted."
+                            f"Row {excel_row_num} [{s_name} - {reg_num}], Subject '{subj}': Mark {num_val} exceeds maximum of {MAX_MARK:.0f}."
                         )
-                    row_marks[subj] = num_val
+                        row_marks[subj] = None
+                    elif num_val < PASS_MARK:
+                        # Mark < 45: treat as fail (U grade), not an error
+                        row_marks[subj] = {"mark": num_val, "isAbsent": False, "isFail": True}
+                    else:
+                        # Normal passing mark
+                        row_marks[subj] = num_val
                 except ValueError:
                     errors.append(
                         f"Row {excel_row_num} [{s_name} - {reg_num}], Subject '{subj}': Value '{val}' is not a valid numeric mark."
@@ -357,20 +445,36 @@ def run_relative_grading_pipeline(
 ) -> Dict[str, Any]:
     """
     Executes the Box-Cox grading pipeline across all subjects and constructs the final master grid.
+    Students with marks < 45 or AB (absent) are assigned grade U and excluded from Box-Cox.
     """
     active_k = validate_k_values(k_values)
     subjects_output: Dict[str, Any] = {}
-    
+
     # Process each subject
     for subj in subject_cols:
         subj_students = []
         for s in student_rows:
-            mark = s["marks"].get(subj)
-            if mark is not None:
+            mark_entry = s["marks"].get(subj)
+            if mark_entry is None:
+                # Student didn't take this subject — skip entirely
+                continue
+            if isinstance(mark_entry, dict):
+                # Absent or fail entry
                 subj_students.append({
                     "register_number": s["register_number"],
                     "name": s["name"],
-                    "mark": mark
+                    "mark": mark_entry.get("mark"),
+                    "isAbsent": mark_entry.get("isAbsent", False),
+                    "isFail": mark_entry.get("isFail", False),
+                })
+            else:
+                # Normal numeric mark
+                subj_students.append({
+                    "register_number": s["register_number"],
+                    "name": s["name"],
+                    "mark": mark_entry,
+                    "isAbsent": False,
+                    "isFail": False,
                 })
 
         # Process subject grading
@@ -394,22 +498,33 @@ def run_relative_grading_pipeline(
             "originalMarks": {}
         }
         for subj in subject_cols:
-            mark = s["marks"].get(subj)
-            if mark is None:
+            mark_entry = s["marks"].get(subj)
+            if mark_entry is None:
                 row_dict["grades"][subj] = "-"
                 row_dict["points"][subj] = None
                 row_dict["originalMarks"][subj] = None
+            elif isinstance(mark_entry, dict):
+                # Absent or fail: assign U
+                row_dict["grades"][subj] = "U"
+                row_dict["points"][subj] = 0
+                raw = mark_entry.get("mark")
+                row_dict["originalMarks"][subj] = round(float(raw), 2) if raw is not None else None
+                row_dict["isAbsent"] = row_dict.get("isAbsent", {})
+                # Track per-subject absent status
+                if not isinstance(row_dict.get("isAbsentMap"), dict):
+                    row_dict["isAbsentMap"] = {}
+                row_dict["isAbsentMap"][subj] = mark_entry.get("isAbsent", False)
             else:
                 # Find assigned grade from subject result
                 subj_res = subjects_output[subj]
                 assigned_grade = "C"
                 for b_idx, b_val in enumerate(subj_res["finalBoundaries"]):
-                    if mark >= b_val:
+                    if mark_entry >= b_val:
                         assigned_grade = GRADES[b_idx]
                         break
                 row_dict["grades"][subj] = assigned_grade
                 row_dict["points"][subj] = POINTS[assigned_grade]
-                row_dict["originalMarks"][subj] = mark
+                row_dict["originalMarks"][subj] = round(float(mark_entry), 2)
 
         grid_rows.append(row_dict)
 
@@ -452,6 +567,7 @@ def generate_sample_excel() -> bytes:
     """
     Generates a realistic sample Excel file with 25 students and 3 subjects (e.g. CS301, CS302, CS303)
     with marks strictly between 45 and 100 for immediate testing.
+    Includes a few rows with marks < 45 and AB to demonstrate U-grade handling.
     """
     sample_students = [
         ("REG2024001", "Aarav Sharma", 88.5, 92.0, 74.0),
@@ -481,16 +597,33 @@ def generate_sample_excel() -> bytes:
         ("REG2024025", "Swati Mukherjee", 77.0, 80.5, 83.0),
     ]
 
-    df_sample = pd.DataFrame([
-        {
+    rows = []
+    for reg, name, m1, m2, m3 in sample_students:
+        rows.append({
             "Student Register Number": reg,
             "Student Name": name,
             "CS301": m1,
             "CS302": m2,
             "CS303": m3
-        }
-        for reg, name, m1, m2, m3 in sample_students
-    ])
+        })
+
+    # Add two special rows: one with mark < 45 and one with AB
+    rows.append({
+        "Student Register Number": "REG2024026",
+        "Student Name": "Fail Student",
+        "CS301": 38.0,   # < 45: will get U
+        "CS302": 55.0,
+        "CS303": 42.0    # < 45: will get U
+    })
+    rows.append({
+        "Student Register Number": "REG2024027",
+        "Student Name": "Absent Student",
+        "CS301": "AB",   # Absent: will get U
+        "CS302": 60.0,
+        "CS303": "AB"    # Absent: will get U
+    })
+
+    df_sample = pd.DataFrame(rows)
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:

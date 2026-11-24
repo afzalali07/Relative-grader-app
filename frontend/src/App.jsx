@@ -303,7 +303,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>Relative Grading Web Application &bull; Box-Cox Normalization Engine</span>
           <span className="text-slate-400">
-            Grading Scale: O (10) &bull; A+ (9) &bull; A (8) &bull; B+ (7) &bull; B (6) &bull; C (5)
+            Grading Scale: O (10) &bull; A+ (9) &bull; A (8) &bull; B+ (7) &bull; B (6) &bull; C (5) &bull; <span className="text-red-400">U (0 — Fail/Absent)</span>
           </span>
         </div>
       </footer>

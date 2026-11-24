@@ -1,7 +1,7 @@
 // Box-Cox Inverse and Instant Dynamic Re-grading Engine
 
 export const GRADES = ['O', 'A+', 'A', 'B+', 'B', 'C'];
-export const POINTS = { 'O': 10, 'A+': 9, 'A': 8, 'B+': 7, 'B': 6, 'C': 5 };
+export const POINTS = { 'O': 10, 'A+': 9, 'A': 8, 'B+': 7, 'B': 6, 'C': 5, 'U': 0 };
 export const PASS_MARK = 45.0;
 export const MAX_MARK = 100.0;
 
@@ -103,9 +103,14 @@ export function recalculateResultsWithK(currentData, kValues) {
       return 'C';
     };
 
-    // Re-grade students in this subject
-    const gradeDistribution = { 'O': 0, 'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C': 0 };
+    // Re-grade students in this subject (skip U-grade students — they stay as U)
+    const gradeDistribution = { 'O': 0, 'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C': 0, 'U': 0 };
     const updatedStudentResults = subj.studentResults.map(st => {
+      // U-grade students (fail/absent) are not re-graded
+      if (st.grade === 'U') {
+        gradeDistribution['U'] = (gradeDistribution['U'] || 0) + 1;
+        return st;
+      }
       const assignedGrade = getGradeForMark(st.originalMark);
       const assignedPoint = POINTS[assignedGrade];
       gradeDistribution[assignedGrade] = (gradeDistribution[assignedGrade] || 0) + 1;
@@ -135,6 +140,11 @@ export function recalculateResultsWithK(currentData, kValues) {
 
     for (const code of currentData.subjectCodes) {
       const rawMark = row.originalMarks ? row.originalMarks[code] : undefined;
+      const currentGrade = row.grades ? row.grades[code] : undefined;
+
+      // Skip U grades (fail/absent) — they don't change with boundary updates
+      if (currentGrade === 'U' || currentGrade === '-') continue;
+
       if (rawMark !== undefined && rawMark !== null) {
         const subjData = updatedSubjects[code];
         let assigned = 'C';

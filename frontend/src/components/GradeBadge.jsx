@@ -7,6 +7,7 @@ const gradeStyles = {
   'B+': 'bg-blue-100 text-blue-800 border-blue-300 font-semibold',
   'B': 'bg-indigo-100 text-indigo-800 border-indigo-300 font-medium',
   'C': 'bg-slate-100 text-slate-700 border-slate-300 font-medium',
+  'U': 'bg-red-100 text-red-800 border-red-300 font-bold',
   '-': 'bg-gray-50 text-gray-400 border-gray-200 italic',
 };
 

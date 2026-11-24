@@ -182,7 +182,7 @@ export default function MasterGrid({ subjectCodes, masterGrid, onExport, isExpor
                           {viewMode === 'withPoints' && (
                             <div className="inline-flex items-center gap-1.5">
                               <GradeBadge grade={grade} size="sm" />
-                              {points !== undefined && points !== null && (
+                              {points !== undefined && points !== null && grade !== '-' && (
                                 <span className="font-mono text-[11px] text-slate-500 font-bold">
                                   ({points})
                                 </span>
@@ -192,11 +192,15 @@ export default function MasterGrid({ subjectCodes, masterGrid, onExport, isExpor
                           {viewMode === 'withMarks' && (
                             <div className="flex flex-col items-center">
                               <GradeBadge grade={grade} size="sm" />
-                              {rawMark !== undefined && rawMark !== null && (
+                              {grade === 'U' ? (
+                                <span className="text-[10px] text-red-400 font-mono mt-0.5">
+                                  {rawMark != null ? `${rawMark.toFixed(1)}` : 'AB'}
+                                </span>
+                              ) : rawMark !== undefined && rawMark !== null ? (
                                 <span className="text-[10px] text-slate-400 font-mono mt-0.5">
                                   {rawMark.toFixed(1)} / 100
                                 </span>
-                              )}
+                              ) : null}
                             </div>
                           )}
                         </td>
